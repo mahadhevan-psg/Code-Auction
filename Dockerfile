@@ -45,7 +45,6 @@ COPY --from=builder /app/server/package*.json ./server/
 COPY --from=builder /app/server/dist ./server/dist
 COPY --from=builder /app/server/node_modules ./server/node_modules
 COPY --from=builder /app/client/dist ./client/dist
-COPY --from=builder /app/database ./database
 
 # Environment Variables
 ENV NODE_ENV=production
