@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: code-auction
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: DB_DIR
+        value: /app/database
+      - key: PYTHON_BIN
+        value: python3

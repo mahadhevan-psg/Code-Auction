@@ -1,0 +1,603 @@
+Algorithm Auction / Code Clash
+Complete Web Application Requirements Specification
+Technical Event Coding Competition Platform
+Version 1.0 | Functional, UI, Backend, Database, Security and Deployment Requirements
+Document Control
+Item
+Details
+Application Type
+Web-based technical event / coding competition platform
+Primary Users
+First-year participants, Senior participants, Administrators
+Competition Format
+2 rounds; 5 problems per round
+Team Size
+5 members: 2 first-year + 3 senior students
+Round 1 Coding Time
+10 minutes
+Round 2 Coding Time
+30 minutes
+Recommended Frontend
+React + TypeScript
+Recommended Backend
+Node.js + Express
+Realtime Layer
+Socket.IO
+Database
+PostgreSQL
+Code Editor
+Monaco Editor
+Code Judge
+Judge0 or equivalent execution service
+1. Purpose and Scope
+The application is a custom competition platform for a two-round team coding event in which first-year members choose the priority order of coding problems while senior members solve the problem allocated to their team. The platform manages the complete event lifecycle: team login, temporary credentials, problem reveal, priority submission, deterministic allocation, coding, code execution, scoring, monitoring, anti-malpractice evidence, and final leaderboard.
+The application is intentionally designed to avoid a traditional blind auction. Teams do not bid virtual money, and no complex power-up economy is required. Instead, the competitive element comes from strategic problem prioritization and first-come-first-served allocation subject to dynamically calculated problem capacity.
+2. Core Event Rules
+Rule
+Requirement
+Team composition
+Exactly 5 members: 2 first-year students and 3 students from senior years.
+First-year responsibility
+Select and submit the team's 1st–5th problem priorities.
+Senior responsibility
+Solve the problem allocated to the team.
+Problems per round
+Exactly 5 problems are revealed at the start of each round.
+Rounds
+Exactly 2 coding rounds.
+Round 1
+10-minute coding period.
+Round 2
+30-minute coding period.
+Priority input
+Every team submits a complete ranking of all five problems.
+Allocation
+Process teams in submission order; try priority 1, then 2, 3, 4, 5.
+Capacity
+Problem capacities are calculated from the number of participating teams.
+Capacity visibility
+Participants must not see remaining bucket capacity during selection.
+Coding
+Only the senior role can edit and submit code.
+First-year coding view
+Monitoring/waiting interface; no editor or submission control.
+Scoring
+Passed test cases multiplied by the problem's difficulty weight.
+Aptitude
+First-year aptitude/logical-reasoning score is handled separately and can be added to the final score.
+3. Functional Requirements
+3.1 Event Lifecycle
+WAITING   ↓PRIORITY_SELECTION   ↓ALLOCATION   ↓CODING   ↓ROUND_ENDED   ↓SCOREBOARD   ↓Next Round / FINAL LEADERBOARD
+The backend is the authoritative source of event state.
+Clients receive state changes through REST APIs and Socket.IO.
+A participant must never be able to advance the event state from the browser.
+Round timers must be based on server timestamps, not client clocks.
+The administrator can start, pause where supported, close, and finalize stages.
+3.2 Team and Participant Management
+Create/import teams before the event.
+Store team ID, team name and member role information.
+Associate two login identities with each team: FIRST_YEAR and SENIOR.
+Support multiple participants sharing the role identity, subject to configurable simultaneous-session limits.
+Recommended maximum active sessions: 2 first-year sessions and 3 senior sessions per team.
+Allow administrator to force logout a session.
+Maintain audit records for login, logout, password issue and password consumption.
+3.3 Temporary Password System
+Passwords are temporary session credentials rather than permanent participant passwords.
+REQUEST PASSWORD      ↓ADMIN LOGIN REQUEST QUEUE      ↓ADMIN CLICKS "ISSUE PASSWORD"      ↓CRYPTOGRAPHIC RANDOM PASSWORD GENERATED      ↓HASH STORED IN DATABASE      ↓ADMIN COMMUNICATES PASSWORD      ↓PARTICIPANT LOGS IN      ↓PASSWORD MARKED USED / INVALID      ↓SESSION CREATED
+Participant selects Team ID and role and requests a password.
+Request appears in the administrator Password Manager.
+Administrator explicitly approves and issues the password.
+Password should be generated using a cryptographically secure random generator.
+Suggested format: K7QX-94MP.
+Password expires after approximately 5–10 minutes if unused.
+Password is single-use.
+Plaintext password must never be stored in the database.
+Store a strong password hash such as Argon2id or bcrypt.
+Rate-limit password requests.
+Optionally require an event PIN before allowing a password request.
+A new password is required after logout if the participant needs to log in again.
+3.4 Login and Role Authorization
+Role
+Permissions
+FIRST_YEAR
+Request/login; submit priorities during priority phase; view team status, allocation and score; monitor coding; no code editing or submission.
+SENIOR
+Request/login; view waiting state during priority phase; edit allocated problem code; run/submit code during coding; view team score.
+ADMIN
+Full event control, teams, credentials, problems, allocation, submissions, violations, scoring, sessions and leaderboard.
+Authorization must be enforced by the backend, not merely by hiding frontend buttons.
+Every protected API must validate authenticated session, team, role and event state.
+A senior cannot submit to another team's problem by modifying an HTTP request.
+A first-year cannot call the submission endpoint successfully even if they manually construct a request.
+4. Priority Selection and Allocation Engine
+4.1 Priority UI Requirements
+Display all five problems with problem number, title, difficulty and concise statement/summary.
+Do not expose hidden test cases.
+Provide five ranking positions: 1st, 2nd, 3rd, 4th, 5th.
+The user must rank all five problems before submission.
+Prevent duplicate selections.
+Allow reorder using drag-and-drop or numbered selectors.
+Display the remaining priority-selection timer.
+Display team ID and current team score.
+Do not show remaining problem capacity.
+4.2 Capacity Calculation
+The capacity must be derived from the total number of participating teams. With T teams and five problem buckets, distribute teams as evenly as possible.
+baseCapacity = floor(T / 5)remainder = T % 5First 'remainder' problems:    capacity = baseCapacity + 1Remaining problems:    capacity = baseCapacity
+Example: for 32 teams, capacities can be 7, 7, 6, 6, 6. The distribution must be deterministic and documented before the round starts.
+4.3 Allocation Algorithm
+for team in teams_sorted_by_priority_submission_time:    for preference in team.preferences:        if problem[preference].remaining_capacity > 0:            assign(team, preference)            problem[preference].remaining_capacity -= 1            breakif no preference has capacity:    mark team as ALLOCATION_EXCEPTION    notify administrator
+Submission timestamp is the primary ordering mechanism.
+The server assigns a sequence number when the priority form is accepted.
+The same sequence number/order must be used consistently during allocation.
+Allocation results are persisted before participants are notified.
+An administrator may have a controlled allocation override with an audit log.
+5. Round 1 Requirements
+Administrator reveals five Round 1 problems.
+First-year participants receive the priority-selection interface.
+Senior participants see the waiting screen.
+Each team submits a complete five-problem ranking.
+Priority submission closes when the timer expires or the administrator closes the phase.
+Backend allocates problems using capacity and submission order.
+All participants receive their team's allocation.
+Senior participants receive the coding interface.
+First-year participants receive the monitoring interface.
+Coding runs for exactly 10 minutes according to server time.
+Round score is calculated and shown.
+6. Round 2 Requirements
+Reveal five new Round 2 problems.
+Repeat the complete priority-selection process.
+Calculate capacities again from the number of active participating teams.
+Allocate using the same deterministic algorithm.
+Senior participants receive the Round 2 coding interface.
+First-year participants receive the Round 2 monitoring interface.
+Coding runs for exactly 30 minutes.
+Calculate Round 2 score.
+Add Round 2 score to the accumulated coding score.
+Combine with the separately maintained first-year aptitude score according to the event's published scoring scheme.
+7. Coding Platform Requirements
+7.1 Senior Coding Screen
+Allocated problem statement.
+Monaco Editor.
+Language selector, initially recommended: C++17.
+Run/Test button if enabled by event policy.
+Submit button.
+Server-controlled countdown timer.
+Team score.
+Submission result/status.
+Compile/runtime error display.
+Test-case result summary.
+Autosave status.
+Fullscreen status where enabled.
+No access to hidden test cases.
+7.2 First-Year Monitoring Screen
+Team name and team ID.
+Allocated problem number/title.
+Current team score.
+Server-controlled countdown.
+Senior coding status such as Not Started, Coding, Last Submission, or Solving.
+No code editor.
+No submit button.
+No hidden judge information.
+Optional live submission status without exposing sensitive details.
+7.3 Senior Waiting Screen
+During priority selection, senior participants should see a clear waiting screen such as: “First-year members are selecting your team's problem. You will receive the problem once allocation is complete.”
+8. Code Execution and Judging
+The backend, not the browser, submits code to the judge.
+Recommended judge: Judge0 or an equivalent isolated code execution service.
+Store hidden test cases on the server side.
+Never send hidden test input/output to the participant browser.
+Validate team, role, round, allocation and coding window before judging.
+Record judge submission ID, language, timestamp, status and test results.
+Apply event-specific scoring after judge execution.
+Support compile errors, runtime errors, time-limit failures and wrong answers.
+Apply CPU/memory/time restrictions through the judge.
+Prevent arbitrary server-side code execution outside the isolated judge.
+9. Scoring Requirements
+For a coding problem, let M be the number of test cases passed. Let W be the problem's difficulty weight.
+Problem Score = M × W
+Difficulty weights must be configurable by the administrator.
+Example: Easy = 1, Medium = 2, Hard = 3.
+Round 2 may use a different weight range if the event committee chooses.
+Store raw test-case count and weighted score separately.
+Total coding score = Round 1 score + Round 2 score.
+First-year aptitude score is maintained separately and added according to the published competition formula.
+Score changes after finalization require administrator authorization and audit logging.
+10. Anti-Cheating and Malpractice Requirements
+No software system can absolutely prevent malpractice if participants have unrestricted personal devices and internet access. The platform therefore uses layered controls and produces evidence for administrator review.
+Prefer organizer-controlled laboratory computers.
+Restrict external internet access during coding where venue infrastructure permits.
+Allow only the contest platform and required judge/backend services where practical.
+Do not allow source-file upload or ZIP upload as a substitute for the editor.
+Record fullscreen exits.
+Record browser tab visibility changes.
+Record focus/blur events.
+Optionally record copy/paste events.
+Record submission history and timing.
+Record unusual activity as flags rather than automatically declaring guilt.
+Run post-event code similarity analysis between teams.
+Use token normalization or AST-based similarity rather than only exact text comparison.
+Do not use unreliable AI-code detectors as the sole basis for disqualification.
+Publish malpractice rules before the event.
+If personal devices are allowed, acknowledge that unrestricted AI/search access cannot realistically be prevented.
+11. Admin Dashboard Requirements
+Current event state.
+Round controls.
+Countdowns.
+Team count and online count.
+Priority submission progress.
+Allocation status.
+Password Manager.
+Active Sessions.
+Problem Manager.
+Submission monitor.
+Violation/flag monitor.
+Leaderboard.
+Score adjustment/finalization controls.
+Audit log.
+12. Admin Password Manager
+PASSWORD MANAGER────────────────────────────────────────────────────────LOGIN REQUESTSTeam 17   FIRST_YEAR    14:03:11    [ISSUE PASSWORD]Team 08   SENIOR        14:03:19    [ISSUE PASSWORD]ACTIVE SESSIONSTeam 01   FIRST_YEAR    ONLINE      [FORCE LOGOUT]Team 01   SENIOR        ONLINE      [FORCE LOGOUT]RECENT CREDENTIAL EVENTSTeam 04   SENIOR        ISSUED      13:59:22Team 12   FIRST_YEAR    USED        14:00:03────────────────────────────────────────────────────────
+13. UI Architecture / Block Diagrams
+13.1 Overall Application UI
+                         ┌─────────────────────────┐                         │      LOGIN / ENTRY       │                         │ Team ID + Role           │                         │ Request Temporary Pass   │                         └────────────┬────────────┘                                      │                         ┌────────────▼────────────┐                         │     AUTHENTICATED UI    │                         │   Role + Event State    │                         └───────┬────────┬────────┘                                 │        │                   ┌─────────────┘        └─────────────┐                   ▼                                    ▼          ┌──────────────────┐                 ┌──────────────────┐          │ FIRST-YEAR UI    │                 │ SENIOR UI        │          ├──────────────────┤                 ├──────────────────┤          │ Priority Select  │                 │ Waiting Screen   │          │ Team Score       │                 │ Coding Screen    │          │ Monitor Coding   │                 │ Monaco Editor    │          └────────┬─────────┘                 │ Submit / Run     │                   │                           └────────┬─────────┘                   └──────────────┬────────────────────┘                                  ▼                         ┌──────────────────┐                         │ SCOREBOARD       │                         │ Team + Round     │                         │ Final Ranking    │                         └──────────────────┘                         ┌──────────────────┐                         │ ADMIN DASHBOARD  │                         ├──────────────────┤                         │ Event Control    │                         │ Password Manager │                         │ Problems         │                         │ Allocation       │                         │ Submissions      │                         │ Flags            │                         │ Scores           │                         └──────────────────┘
+13.2 First-Year UI Flow
+LOGIN  │  ▼┌─────────────────────────────┐│ FIRST-YEAR DASHBOARD        ││ Team ID | Score | Status    │└──────────────┬──────────────┘               │       ┌───────▼────────┐       │ Priority Phase │       └───────┬────────┘               ▼┌─────────────────────────────┐│ 5 Problems                  ││                             ││ 1. Problem A   [Rank 3]     ││ 2. Problem B   [Rank 1]     ││ 3. Problem C   [Rank 5]     ││ 4. Problem D   [Rank 2]     ││ 5. Problem E   [Rank 4]     ││                             ││ [SUBMIT PRIORITIES]         │└──────────────┬──────────────┘               ▼┌─────────────────────────────┐│ ALLOCATION RESULT            ││ Your Team → Problem 2       │└──────────────┬──────────────┘               ▼┌─────────────────────────────┐│ CODING MONITOR              ││ Problem 2 | 21:43           ││ Senior: CODING              ││ Team Score: 120             │└──────────────┬──────────────┘               ▼           SCOREBOARD
+13.3 Senior UI Flow
+LOGIN  │  ▼┌─────────────────────────────┐│ WAITING                     ││ First-years are selecting   ││ your team's problem.        │└──────────────┬──────────────┘               ▼┌─────────────────────────────┐│ ALLOCATION COMPLETE         ││ Assigned: Problem 4         │└──────────────┬──────────────┘               ▼┌───────────────────────────────────────────────────┐│ CODING SCREEN                                     │├────────────────────────┬──────────────────────────┤│ PROBLEM STATEMENT      │ MONACO EDITOR            ││                        │                          ││ Constraints            │ int main() {            ││ Examples               │     ...                 ││ Input / Output         │ }                        ││                        │                          ││ Timer: 09:32            │ [RUN] [SUBMIT]         │└────────────────────────┴──────────────────────────┘               │               ▼┌─────────────────────────────┐│ SUBMISSION RESULT           ││ Passed: 8 / 10              ││ Score: 16                   │└─────────────────────────────┘
+13.4 Admin UI Flow
+ADMIN LOGIN    │    ▼┌─────────────────────────────┐│ ADMIN DASHBOARD             ││ Event State: WAITING        │├─────────────────────────────┤│ [START ROUND]               ││ [PROBLEMS]                  ││ [TEAMS]                     ││ [PASSWORD MANAGER]          ││ [LIVE MONITOR]              ││ [SUBMISSIONS]               ││ [VIOLATIONS]                ││ [SCORES]                    │└──────┬──────────────────────┘       │       ├──► Password Manager       │      └─► Requests → Issue → Active Sessions       │       ├──► Round Control       │      └─► Reveal → Priority → Allocate → Code → End       │       ├──► Problem Manager       │      └─► Create/Edit/Weight/Test Cases       │       ├──► Live Monitor       │      └─► Teams / Status / Submissions / Flags       │       └──► Scoreboard              └─► Round Scores → Final Scores → Publish
+14. System Architecture
+                         ┌───────────────────────┐                         │       Browser         │                         │ React + TypeScript    │                         │ Monaco Editor         │                         └───────────┬───────────┘                                     │ HTTPS                                     ▼                         ┌───────────────────────┐                         │ Node.js + Express     │                         │ REST API              │                         │ Auth / RBAC            │                         │ Event State            │                         │ Allocation Engine      │                         │ Scoring                │                         └───────┬─────────┬─────┘                                 │         │                    Socket.IO    │         │ SQL                                 ▼         ▼                         ┌────────────┐ ┌──────────────┐                         │ Realtime   │ │ PostgreSQL   │                         │ Events     │ │ Persistent   │                         └────────────┘ │ Data         │                                        └──────────────┘                                 │                                 │ HTTPS/API                                 ▼                         ┌───────────────────────┐                         │ Judge0 / Code Judge   │                         │ Compile + Execute     │                         │ Test Cases            │                         └───────────────────────┘
+15. Recommended Technology Stack
+Layer
+Technology
+Purpose
+Frontend
+React + TypeScript
+Participant and administrator interfaces
+UI Styling
+CSS / Tailwind / component library
+Responsive UI
+Code Editor
+Monaco Editor
+Browser-based coding
+Backend
+Node.js + Express
+REST APIs and business logic
+Realtime
+Socket.IO
+Round state, timer and status updates
+Database
+PostgreSQL
+Teams, rounds, priorities, submissions, scores
+Code Judge
+Judge0
+Sandboxed compilation/execution
+Authentication
+Server-side sessions + secure cookies
+Participant/admin sessions
+Password Hashing
+Argon2id or bcrypt
+Temporary credential hashes
+Deployment
+Linux server / cloud VM
+Application hosting
+16. Database Requirements
+Table
+Important Fields
+teams
+team_id, team_name, status, created_at
+team_accounts
+account_id, team_id, role, status
+rounds
+round_id, round_number, state, start_time, end_time
+problems
+problem_id, round_id, title, difficulty, weight, capacity
+problem_test_cases
+test_case_id, problem_id, input, expected_output, hidden
+priorities
+team_id, round_id, ranking, submitted_at, sequence_no
+allocations
+team_id, round_id, problem_id, priority_rank, allocated_at
+submissions
+submission_id, team_id, round_id, problem_id, source_code, language, judge_id, status, passed_count, submitted_at
+sessions
+session_id, team_id, role, created_at, expires_at, last_seen
+login_requests
+request_id, team_id, role, requested_at, status
+temporary_credentials
+credential_id, team_id, role, password_hash, issued_at, expires_at, used_at, revoked_at
+scores
+team_id, round_id, coding_score, aptitude_score, total_score
+violations
+violation_id, team_id, type, timestamp, metadata
+audit_logs
+log_id, actor, action, target, timestamp, metadata
+17. Suggested REST API
+Method
+Endpoint
+Purpose
+POST
+/api/auth/request-password
+Request temporary credential
+POST
+/api/auth/login
+Login using one-time credential
+POST
+/api/auth/logout
+Destroy session
+GET
+/api/auth/me
+Return authenticated identity
+GET
+/api/rounds/current
+Current event/round state
+GET
+/api/rounds/:roundId/problems
+Get public problem information
+POST
+/api/rounds/:roundId/priority
+Submit team priority ranking
+GET
+/api/rounds/:roundId/assignment
+Get allocated problem
+POST
+/api/code/autosave
+Persist current code
+POST
+/api/submissions
+Submit code to backend judge
+GET
+/api/submissions/:id
+Get submission result
+POST
+/api/admin/rounds/start
+Start a round/stage
+POST
+/api/admin/rounds/close
+Close current stage
+GET
+/api/admin/login-requests
+List credential requests
+POST
+/api/admin/issue-password
+Issue temporary password
+GET
+/api/admin/sessions
+View active sessions
+POST
+/api/admin/sessions/:id/revoke
+Force logout
+POST
+/api/admin/rounds/:id/allocate
+Run allocation
+GET
+/api/admin/submissions
+Monitor submissions
+GET
+/api/admin/violations
+View malpractice flags
+GET
+/api/admin/leaderboard
+View scores
+18. Realtime Socket Events
+Event
+Direction
+Purpose
+round:state
+Server → Clients
+Current stage changed
+priority:opened
+Server → First Years
+Priority selection started
+priority:closed
+Server → Clients
+Priority selection ended
+allocation:complete
+Server → Team
+Problem assigned
+coding:started
+Server → Clients
+Coding timer started
+submission:status
+Server → Senior/Team
+Judge result update
+round:ended
+Server → Clients
+Coding closed
+score:update
+Server → Clients
+Score changed
+admin:alert
+Server → Admin
+Operational/security alert
+19. Security Requirements
+Use HTTPS in production.
+Use secure, HTTP-only session cookies.
+Use SameSite cookie protection appropriate to deployment.
+Implement CSRF protection where session architecture requires it.
+Validate all API inputs server-side.
+Use parameterized SQL/ORM queries.
+Rate-limit authentication and password-request endpoints.
+Never expose password hashes or secrets through APIs.
+Never expose hidden test cases.
+Use server-side authorization for every protected action.
+Sanitize problem statements if rich text/HTML is supported.
+Limit request body size and submission source-code size.
+Audit administrator actions.
+Use isolated execution for submitted code.
+Do not place cloud/database/judge secrets in frontend code.
+20. Session and Recovery Requirements
+Coding state must be independent from browser login state.
+Autosave source code approximately every five seconds and/or on significant edits.
+If a senior logs out or loses connection, the code remains stored server-side.
+A newly authenticated senior from the same team can restore the saved code.
+The authoritative timer continues on the server.
+Reconnecting clients receive the current event state immediately.
+A closed coding phase must reject submissions even if a participant's browser still displays the editor.
+21. Monitoring and Audit
+Record priority submission timestamp and sequence number.
+Record allocation decision and selected priority rank.
+Record every code submission.
+Record judge result.
+Record login/logout events.
+Record temporary credential issuance and use.
+Record fullscreen/focus/tab events where enabled.
+Record administrator overrides.
+Record score changes.
+Provide an exportable event audit report.
+22. Non-Functional Requirements
+Area
+Requirement
+Performance
+Normal UI actions should respond quickly; realtime state changes should normally reach clients within a few seconds or less.
+Concurrency
+Support all participating teams submitting priorities and coding concurrently.
+Reliability
+Persist critical event state before broadcasting completion.
+Consistency
+Allocation must be transactional so a problem cannot be assigned beyond capacity.
+Availability
+Application should remain available for the full event window.
+Security
+Participant input cannot bypass server authorization.
+Usability
+Interfaces should be simple enough for students to understand without training.
+Recovery
+Reconnect/login must restore relevant state without resetting the round.
+Auditability
+Important actions must have timestamps and actor/team identifiers.
+Maintainability
+Problem weights, capacities and event timings should be configurable.
+23. Error Handling
+If priority submission fails, show an explicit error and preserve entered selections.
+If allocation fails, freeze participant transition and alert administrator.
+If Judge0 is unavailable, preserve the submission and show a pending state.
+If code compilation fails, display the compiler result without losing source code.
+If the browser disconnects, preserve server-side timer and autosaved code.
+If a password expires, require a new request.
+If all five choices are unexpectedly full, create an allocation exception for administrator resolution.
+Do not allow duplicate allocation for the same team and round.
+24. Problem Management Requirements
+Admin can create, edit, publish and retire problems.
+Each problem belongs to one round.
+Each problem has title, statement, constraints, examples, difficulty and weight.
+Hidden tests are maintained separately from the public statement.
+Admin can configure time and memory limits.
+Problems should be validated before publishing.
+Published problem content should not change during an active round unless an emergency administrator override is logged.
+25. Recommended Project Structure
+algorithm-auction/├── client/│   ├── src/│   │   ├── pages/│   │   │   ├── Login/│   │   │   ├── FirstYear/│   │   │   ├── Senior/│   │   │   └── Admin/│   │   ├── components/│   │   ├── hooks/│   │   ├── services/│   │   ├── socket/│   │   └── types/│   └── package.json│├── server/│   ├── src/│   │   ├── routes/│   │   ├── controllers/│   │   ├── services/│   │   │   ├── allocation/│   │   │   ├── scoring/│   │   │   ├── judge/│   │   │   └── credentials/│   │   ├── middleware/│   │   ├── socket/│   │   ├── models/│   │   └── utils/│   └── package.json│├── database/│   ├── migrations/│   └── seeds/│└── docs/
+26. Main UI Screen Inventory
+Screen
+Primary User
+Key Elements
+Login / Request Password
+All participants
+Team ID, role, request password, login
+First-Year Dashboard
+First Year
+Score, status, round state
+Priority Selection
+First Year
+Five problems, ranking, timer, submit
+Senior Waiting
+Senior
+Round state, waiting message, team score
+Allocation Result
+Both
+Assigned problem, priority rank
+Senior Coding
+Senior
+Problem, Monaco, timer, run, submit, result
+First-Year Monitor
+First Year
+Problem, timer, senior/team status, score
+Round Scoreboard
+Both
+Team scores and ranking
+Admin Dashboard
+Admin
+Global event control and monitoring
+Password Manager
+Admin
+Requests, issue, active sessions
+Problem Manager
+Admin
+Problems, weights, test cases
+Submission Monitor
+Admin
+Submissions, results, timestamps
+Violation Monitor
+Admin
+Flags and evidence
+Final Leaderboard
+All
+Final ranking and scores
+27. Participant Experience: End-to-End
+1. Participant opens application          ↓2. Selects Team ID + Role          ↓3. Requests temporary password          ↓4. Admin approves / issues password          ↓5. Participant logs in          ↓6. Round begins          ↓7. First-years rank five problems   Seniors wait          ↓8. Priority selection closes          ↓9. Backend allocates problem          ↓10. Both roles receive allocation          ↓11. Senior codes    First-year monitors          ↓12. Senior submits code          ↓13. Judge executes hidden tests          ↓14. Score calculated          ↓15. Round scoreboard          ↓16. Repeat for Round 2          ↓17. Final coding score          ↓18. Add separately maintained aptitude score          ↓19. Final leaderboard
+28. Acceptance Criteria
+A team can request and receive a temporary role-specific credential only through the administrator workflow.
+A used or expired temporary password cannot be reused.
+First-year participants can rank exactly five distinct problems.
+A priority submission receives a server-generated sequence number.
+Allocation never exceeds configured problem capacity.
+Allocation follows the stored priority ranking and submission order.
+The senior role sees exactly the allocated problem.
+The first-year role cannot access the code editor or submission endpoint.
+The coding timer is server-authoritative.
+Code remains available after logout/relogin.
+Hidden tests are never returned to the browser.
+Judge results are persisted.
+Round scores are calculated consistently.
+Admin can monitor teams, submissions, sessions and flags.
+Final leaderboard is generated from persisted scores.
+Critical event actions are auditable.
+29. Development Phases
+Phase
+Deliverables
+Phase 1 – Foundation
+React app, Express server, PostgreSQL, basic authentication/session framework
+Phase 2 – Team/Roles
+Teams, FIRST_YEAR/SENIOR/ADMIN roles, role authorization
+Phase 3 – Temporary Credentials
+Request queue, admin issue, one-time password lifecycle
+Phase 4 – Event Engine
+Rounds, states, timers, priority submission and allocation
+Phase 5 – Participant UI
+First-year priority/monitoring screens and senior waiting/coding screens
+Phase 6 – Judge Integration
+Monaco, autosave, Judge0 submission and result handling
+Phase 7 – Scoring
+Difficulty weights, round score, leaderboard
+Phase 8 – Admin
+Dashboard, password manager, problems, submissions, violations
+Phase 9 – Security
+Rate limits, audit logs, anti-cheat telemetry, authorization testing
+Phase 10 – Testing
+Concurrency, allocation edge cases, timer/reconnect, judge failures, full dress rehearsal
+30. Testing Checklist
+Test with 1, 5, 6, 10, 32 and other realistic team counts.
+Test capacity distributions where total teams is not divisible by five.
+Test simultaneous priority submissions.
+Test duplicate priorities.
+Test incomplete priorities.
+Test expired passwords.
+Test reused passwords.
+Test multiple simultaneous sessions.
+Test senior/first-year authorization boundaries.
+Test logout/relogin during coding.
+Test browser refresh during coding.
+Test network disconnect/reconnect.
+Test judge timeout and unavailable judge.
+Test coding end exactly at timer boundary.
+Test submissions immediately before and after round close.
+Test allocation exceptions.
+Test administrator overrides and audit logs.
+Test code similarity reporting.
+Load-test concurrent submissions and realtime updates before the live event.
+31. Final Product Definition
+The completed system should feel like a purpose-built competitive programming platform rather than a collection of separate pages. The participant experience should be minimal and fast: authenticate, select priorities, receive an allocation, solve or monitor the assigned problem, and view the score. The administrator experience should provide complete operational control without requiring direct database manipulation.
+The key architectural principle is that the browser is a presentation and interaction layer, while the backend is the authority for event state, allocation, timing, permissions, scoring and submission validation. This prevents participants from manipulating the competition by modifying frontend code or API requests.
+For the first production version, the recommended scope is React + TypeScript, Node.js + Express, PostgreSQL, Socket.IO, Monaco Editor and Judge0, with a dedicated administrator dashboard and server-side session/authentication system.
+Appendix A — Quick UI Wireframe Summary
+┌──────────────────────────────────────────────────────────────────────┐│ ALGORITHM AUCTION — TEAM 17                         SCORE: 120       │├──────────────────────────────────────────────────────────────────────┤│ ROUND 1       PRIORITY SELECTION                     TIME: 00:42     │├──────────────────────────────────────────────────────────────────────┤│                                                                      ││  Rank     Problem                 Difficulty                         ││  ─────────────────────────────────────────────────────────────────   ││   1       Problem B               Medium                             ││   2       Problem D               Easy                               ││   3       Problem A               Hard                               ││   4       Problem E               Medium                             ││   5       Problem C               Easy                               ││                                                                      ││                         [ SUBMIT PRIORITIES ]                        │└──────────────────────────────────────────────────────────────────────┘┌──────────────────────────────────────────────────────────────────────┐│ TEAM 17 — SENIOR CODING                              TIME: 08:31     │├───────────────────────────────┬──────────────────────────────────────┤│ PROBLEM 4                     │ MONACO EDITOR                        ││                               │                                      ││ Statement                     │  #include <bits/stdc++.h>            ││ Constraints                   │  using namespace std;                 ││ Examples                      │                                      ││                               │  int main() {                         ││                               │      ...                              ││                               │  }                                   ││                               │                                      ││                               │               [RUN] [SUBMIT]         │└───────────────────────────────┴──────────────────────────────────────┘┌──────────────────────────────────────────────────────────────────────┐│ ADMIN DASHBOARD                                                       │├───────────────┬──────────────────────────────────────────────────────┤│ EVENT         │ ROUND 1 — CODING — 08:31                             ││ [Start/Close] │ Teams Online: 28/32                                  ││               │ Submissions: 14                                      ││ PASSWORDS     │                                                      ││ [Manager]     │ TEAM MONITOR                                         ││               │ T01  P2  CODING   12 pts                             ││ PROBLEMS      │ T02  P4  SUBMITTED 24 pts                           ││ [Manager]     │ T03  P1  CODING   8 pts                             ││               │ ...                                                  ││ SUBMISSIONS   │                                                      ││ [Monitor]     │ [VIEW TEAM] [VIEW FLAGS] [LEADERBOARD]               │└───────────────┴──────────────────────────────────────────────────────┘
