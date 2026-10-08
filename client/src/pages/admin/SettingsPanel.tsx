@@ -10,7 +10,9 @@ export const SettingsPanel: React.FC<{ eventState: EventState }> = ({ eventState
   const { run, busy } = useAction();
   const [cfg, setCfg] = useState<EventConfig | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
+  const [resetAllOpen, setResetAllOpen] = useState(false);
   const [confirmText, setConfirmText] = useState('');
+  const [confirmAllText, setConfirmAllText] = useState('');
 
   useEffect(() => { if (q.data) setCfg(q.data.config); }, [q.data]);
 
@@ -23,6 +25,10 @@ export const SettingsPanel: React.FC<{ eventState: EventState }> = ({ eventState
   const reset = async () => {
     await run('reset', () => api.adminEvent('reset', { confirm: 'RESET' }), `Round ${eventState.roundNumber} reset to the lobby.`);
     setResetOpen(false); setConfirmText('');
+  };
+  const resetAll = async () => {
+    await run('reset-all', () => api.adminEvent('reset-all', { confirm: 'RESET_ALL' }), 'Entire event reset to Round 1 lobby.');
+    setResetAllOpen(false); setConfirmAllText('');
   };
 
   if (!cfg) return <div className="skeleton" style={{ height: 320 }} />;
@@ -43,14 +49,23 @@ export const SettingsPanel: React.FC<{ eventState: EventState }> = ({ eventState
         <div><button className="btn btn-primary" onClick={save} disabled={busy === 'save'}><Save size={15} /> Save settings</button></div>
       </div>
 
-      <div className="card card-pad stack" style={{ gap: 12, maxWidth: 760, borderColor: 'color-mix(in srgb, var(--err) 35%, var(--border))' }}>
+      <div className="card card-pad stack" style={{ gap: 14, maxWidth: 760, borderColor: 'color-mix(in srgb, var(--err) 35%, var(--border))' }}>
         <div><h3 style={{ fontSize: 15, color: 'var(--err)' }}>Danger zone</h3><p className="hint">For dress rehearsals. Can't be undone.</p></div>
+        
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
           <div>
             <div style={{ fontWeight: 600 }}>Reset Round {eventState.roundNumber}</div>
             <div className="muted" style={{ fontSize: 13 }}>Deletes this round's priorities, allocations, submissions, autosaves and scores, then returns to the lobby.</div>
           </div>
-          <button className="btn btn-danger" onClick={() => setResetOpen(true)}><RotateCcw size={15} /> Reset round</button>
+          <button className="btn btn-danger" onClick={() => { setConfirmText(''); setResetOpen(true); }}><RotateCcw size={15} /> Reset round</button>
+        </div>
+
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontWeight: 600 }}>Reset Everything (Back to Round 1)</div>
+            <div className="muted" style={{ fontSize: 13 }}>Deletes priorities, allocations, submissions, autosaves, scores, score adjustments and violations across ALL rounds, and sets event back to Round 1 lobby.</div>
+          </div>
+          <button className="btn btn-danger" onClick={() => { setConfirmAllText(''); setResetAllOpen(true); }}><RotateCcw size={15} /> Reset everything</button>
         </div>
       </div>
 
@@ -60,6 +75,16 @@ export const SettingsPanel: React.FC<{ eventState: EventState }> = ({ eventState
           <div className="stack">
             <Banner kind="err" icon={<AlertTriangle size={17} />}>All participant data for this round will be permanently deleted. The audit log is kept.</Banner>
             <Field label="Type RESET to confirm"><input className="input mono" value={confirmText} onChange={e => setConfirmText(e.target.value)} autoFocus /></Field>
+          </div>
+        </Modal>
+      )}
+
+      {resetAllOpen && (
+        <Modal title="Reset Entire Event to Round 1?" onClose={() => setResetAllOpen(false)}
+          footer={<><button className="btn" onClick={() => setResetAllOpen(false)}>Cancel</button><button className="btn btn-danger" disabled={confirmAllText !== 'RESET_ALL' || busy === 'reset-all'} onClick={resetAll}>Reset everything</button></>}>
+          <div className="stack">
+            <Banner kind="err" icon={<AlertTriangle size={17} />}>All participant data, submissions, allocations, scores, and violations across ALL rounds will be permanently deleted, and the event will return to the Round 1 lobby. The audit log is kept.</Banner>
+            <Field label="Type RESET_ALL to confirm"><input className="input mono" value={confirmAllText} onChange={e => setConfirmAllText(e.target.value)} autoFocus /></Field>
           </div>
         </Modal>
       )}

@@ -66,6 +66,10 @@ router.post('/event/:action', (req: AuthenticatedRequest, res) => {
         if (body.confirm !== 'RESET') return res.status(400).json({ error: 'Type RESET to confirm.' });
         EventEngine.resetRound(EventEngine.currentRoundId, who);
         break;
+      case 'reset-all':
+        if (body.confirm !== 'RESET_ALL' && body.confirm !== 'RESET') return res.status(400).json({ error: 'Type RESET_ALL to confirm.' });
+        EventEngine.resetEvent(who);
+        break;
       default: return res.status(404).json({ error: 'Unknown action.' });
     }
     return res.json({ state: EventEngine.getEventState() });

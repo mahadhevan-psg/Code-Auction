@@ -311,4 +311,29 @@ export class EventEngine {
     Realtime.emitAll('leaderboard:changed', {});
     this.broadcastStateChange();
   }
+
+  /**
+   * Reset everything to Round 1 lobby: wipes priorities, allocations, submissions, scores,
+   * autosaves, score adjustments, and violations across ALL rounds, resets all problems' remaining
+   * capacities, resets all rounds to WAITING state, and sets active round to 1.
+   */
+  static resetEvent(actor: string) {
+    transaction(() => {
+      db.prepare('DELETE FROM priorities').run();
+      db.prepare('DELETE FROM allocations').run();
+      db.prepare('DELETE FROM submissions').run();
+      db.prepare('DELETE FROM scores').run();
+      db.prepare('DELETE FROM code_autosaves').run();
+      db.prepare('DELETE FROM score_adjustments').run();
+      db.prepare('DELETE FROM violations').run();
+      db.prepare('UPDATE problems SET remaining_capacity = capacity').run();
+      db.prepare("UPDATE rounds SET state = 'WAITING', phase_ends_at = NULL, paused_remaining = NULL, start_time = NULL, end_time = NULL").run();
+      this.activeRoundId = 1;
+      setSetting('active_round_id', 1);
+      audit(actor, 'RESET_EVENT', 'ALL_ROUNDS');
+    });
+    this.allocationError = null;
+    Realtime.emitAll('leaderboard:changed', {});
+    this.broadcastStateChange();
+  }
 }
